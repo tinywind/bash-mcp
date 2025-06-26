@@ -1,0 +1,14 @@
+# 개발 파일들
+.git
+.gitignore
+node_modules/
+*.log
+.DS_Store
+
+# 테스트 파일
+test/
+*.test.js
+
+# 설정 파일
+.eslintrc
+.prettierrc

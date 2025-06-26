@@ -1,0 +1,41 @@
+{
+  "name": "bash-mcp",
+  "version": "1.0.0",
+  "description": "Simple bash command execution MCP server for Claude",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "bash-mcp": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "bash",
+    "shell",
+    "command-execution"
+  ],
+  "author": "tinywind <tinywind0@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tinywind/bash-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tinywind/bash-mcp/issues"
+  },
+  "homepage": "https://github.com/tinywind/bash-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
