@@ -119,6 +119,38 @@ For background processes:
 - Set working directory for commands
 - Configure timeout for commands
 - Automatic cleanup on server shutdown
+- **NEW**: Automatic output truncation with full output saved to temp files
+- **NEW**: Configurable output size limits and temp directory via environment variables
+
+## Environment Variables
+
+- `BASH_MCP_MAX_OUTPUT_SIZE`: Maximum output size in bytes before truncation (default: 51200/50KB)
+- `BASH_MCP_TEMP_DIR`: Directory for storing full output when truncated (default: system temp directory)
+
+### Example Configuration
+
+```json
+{
+  "mcpServers": {
+    "bash": {
+      "command": "npx",
+      "args": ["bash-mcp"],
+      "env": {
+        "BASH_MCP_MAX_OUTPUT_SIZE": "102400",
+        "BASH_MCP_TEMP_DIR": "/tmp/bash-mcp-outputs"
+      }
+    }
+  }
+}
+```
+
+## Output Overflow Handling
+
+When command output exceeds `BASH_MCP_MAX_OUTPUT_SIZE`:
+1. Output is truncated to the specified limit
+2. Full output is saved to a temporary file
+3. The response includes the file path where full output can be found
+4. If custom temp directory fails, falls back to system temp directory
 
 ## Security Considerations
 
