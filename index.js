@@ -17,6 +17,48 @@ const execAsync = promisify(exec);
 // MCP 최대 출력 크기 (환경변수에서 읽거나 기본값 50KB)
 const MAX_OUTPUT_SIZE = parseInt(process.env.BASH_MCP_MAX_OUTPUT_SIZE || '51200', 10);
 
+// Shell command helper functions
+function getShellCommand(shellPath) {
+  if (!shellPath) return true; // Use Node's default
+  
+  const shellName = shellPath.toLowerCase();
+  
+  // Detect shell type and return appropriate command array
+  if (shellName.includes('bash') || shellName.includes('sh') || shellName.includes('zsh')) {
+    return [shellPath, '-c'];
+  } else if (shellName.includes('powershell') || shellName.includes('pwsh')) {
+    return [shellPath, '-Command'];
+  } else if (shellName.includes('cmd')) {
+    return [shellPath, '/c'];
+  } else if (shellName.includes('fish')) {
+    return [shellPath, '-c'];
+  } else {
+    // Unknown shell - try common Unix syntax
+    console.error(`Warning: Unknown shell ${shellPath}, assuming -c flag`);
+    return [shellPath, '-c'];
+  }
+}
+
+function parseShellCommand(shellEnv) {
+  if (!shellEnv) return true;
+  
+  // Check if user already provided flags (contains space or common flags)
+  if (shellEnv.includes(' ') || shellEnv.includes('-c') || shellEnv.includes('/c')) {
+    // User provided full command, parse it
+    return shellEnv.split(' ');
+  }
+  
+  // Just a path, auto-detect
+  return getShellCommand(shellEnv);
+}
+
+// 기본 작업 디렉토리 및 셸 설정
+const DEFAULT_CWD = process.env.BASH_DEFAULT_CWD || process.cwd();
+const SHELL_COMMAND = parseShellCommand(process.env.BASH_SHELL);
+
+// 서버 수준 상태: 지속적인 작업 디렉토리
+let currentWorkingDirectory = DEFAULT_CWD;
+
 // 임시 디렉토리 유효성 검증 함수
 async function validateTempDir(dirPath) {
   try {
@@ -44,6 +86,26 @@ async function validateTempDir(dirPath) {
   }
 }
 
+// 디렉토리 유효성 검증 함수
+async function validateDirectory(dirPath) {
+  try {
+    const stats = await stat(dirPath);
+    if (!stats.isDirectory()) {
+      return { valid: false, error: `Path is not a directory: ${dirPath}` };
+    }
+    // 접근 권한 확인
+    await access(dirPath, constants.R_OK);
+    return { valid: true, path: dirPath };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { valid: false, error: `Directory does not exist: ${dirPath}` };
+    } else if (error.code === 'EACCES') {
+      return { valid: false, error: `Permission denied: ${dirPath}` };
+    }
+    return { valid: false, error: `Cannot access directory: ${dirPath} (${error.message})` };
+  }
+}
+
 // MCP 임시 디렉토리 설정
 let TEMP_DIR = tmpdir(); // 기본값
 const customTempDir = process.env.BASH_MCP_TEMP_DIR;
@@ -58,10 +120,23 @@ if (customTempDir) {
   });
 }
 
+// 기본 작업 디렉토리 유효성 검증
+if (process.env.BASH_DEFAULT_CWD) {
+  validateDirectory(process.env.BASH_DEFAULT_CWD).then(result => {
+    if (!result.valid) {
+      console.error(`Invalid BASH_DEFAULT_CWD: ${result.error}`);
+      console.error(`Falling back to current directory: ${process.cwd()}`);
+      currentWorkingDirectory = process.cwd();
+    } else {
+      console.error(`Using default working directory: ${currentWorkingDirectory}`);
+    }
+  });
+}
+
 const server = new Server(
   {
     name: "bash-mcp",
-    version: "1.0.0",
+    version: "1.2.0",
   },
   {
     capabilities: {
@@ -199,6 +274,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {},
       },
     },
+    {
+      name: "cd",
+      description: "Change the persistent working directory for subsequent commands",
+      inputSchema: {
+        type: "object",
+        properties: {
+          directory: {
+            type: "string",
+            description: "Target directory path (absolute or relative to current directory)",
+          },
+        },
+        required: ["directory"],
+      },
+    },
+    {
+      name: "pwd",
+      description: "Get the current persistent working directory",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
   ],
 }));
 
@@ -211,10 +308,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { command, cwd, timeout = 30000 } = args;
 
       try {
+        // 사용자 지정 cwd가 없으면 지속적인 작업 디렉토리 사용
+        const effectiveCwd = cwd || currentWorkingDirectory;
+
         const options = {
-          cwd,
+          cwd: effectiveCwd,
           timeout,
           maxBuffer: 10 * 1024 * 1024, // 10MB
+          shell: SHELL_COMMAND,
         };
 
         const { stdout, stderr } = await execAsync(command, options);
@@ -341,9 +442,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
+        // 사용자 지정 cwd가 없으면 지속적인 작업 디렉토리 사용
+        const effectiveCwd = cwd || currentWorkingDirectory;
+
         const child = spawn(command, {
-          shell: true,
-          cwd,
+          shell: SHELL_COMMAND,
+          cwd: effectiveCwd,
           detached: false,
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -635,6 +739,121 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+
+    case "cd": {
+      const { directory } = args;
+
+      try {
+        let targetPath;
+
+        // 절대 경로인지 상대 경로인지 확인 (Windows에서 forward slash도 지원)
+        if (directory.startsWith('/') || (process.platform === 'win32' && directory.match(/^[a-zA-Z]:[/\\]/))) {
+          targetPath = directory;
+        } else {
+          targetPath = join(currentWorkingDirectory, directory);
+        }
+
+        const validation = await validateDirectory(targetPath);
+        if (!validation.valid) {
+          const responseData = {
+            success: false,
+            error: validation.error,
+            currentDirectory: currentWorkingDirectory
+          };
+
+          const fullOutput = JSON.stringify(responseData, null, 2);
+          const finalResult = await truncateOutput(fullOutput, MAX_OUTPUT_SIZE, 'cd-error');
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: finalResult.content,
+              },
+            ],
+          };
+        }
+
+        // 성공적으로 디렉토리 변경
+        const previousDirectory = currentWorkingDirectory;
+        currentWorkingDirectory = validation.path;
+
+        const responseData = {
+          success: true,
+          currentDirectory: currentWorkingDirectory,
+          previousDirectory: previousDirectory
+        };
+
+        const fullOutput = JSON.stringify(responseData, null, 2);
+        const finalResult = await truncateOutput(fullOutput, MAX_OUTPUT_SIZE, 'cd-response');
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: finalResult.content,
+            },
+          ],
+        };
+      } catch (error) {
+        const responseData = {
+          success: false,
+          error: error.message,
+          currentDirectory: currentWorkingDirectory
+        };
+
+        const fullOutput = JSON.stringify(responseData, null, 2);
+        const finalResult = await truncateOutput(fullOutput, MAX_OUTPUT_SIZE, 'cd-error');
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: finalResult.content,
+            },
+          ],
+        };
+      }
+    }
+
+    case "pwd": {
+      try {
+        const responseData = {
+          success: true,
+          currentDirectory: currentWorkingDirectory
+        };
+
+        const fullOutput = JSON.stringify(responseData, null, 2);
+        const finalResult = await truncateOutput(fullOutput, MAX_OUTPUT_SIZE, 'pwd-response');
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: finalResult.content,
+            },
+          ],
+        };
+      } catch (error) {
+        const responseData = {
+          success: false,
+          error: error.message,
+          currentDirectory: currentWorkingDirectory
+        };
+
+        const fullOutput = JSON.stringify(responseData, null, 2);
+        const finalResult = await truncateOutput(fullOutput, MAX_OUTPUT_SIZE, 'pwd-error');
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: finalResult.content,
+            },
+          ],
+        };
+      }
     }
 
     default:
