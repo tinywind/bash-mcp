@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-01-24
+
+### Added
+
+  - New `cd` tool to change persistent working directory that persists across tool calls
+  - New `pwd` tool to get current persistent working directory
+  - Server-level state management for working directory within each Claude Desktop session
+  - `BASH_DEFAULT_CWD` to set default working directory at server startup
+  - `BASH_SHELL` for shell configuration with auto-detection of shell types (bash, PowerShell, cmd, etc.)
+  - Automatic shell command flag detection (e.g., `-c` for bash, `-Command` for PowerShell)
+  - Validation for `BASH_DEFAULT_CWD` with graceful fallback to current directory
+  - New `validateDirectory()` function with path validation
+  - Prevention of path traversal attacks
+  - Improved error messages for directory access issues
+
+### Changed
+
+- `run` and `run_background` tools now automatically use persistent working directory when no explicit `cwd` is provided
+- Existing `cwd` parameters continue to work as overrides to persistent directory
+- Enhanced path resolution supporting both absolute and relative paths
+- Cross-platform compatibility improvements for Windows and Unix-like systems
+
+### Fixed
+
+- Shell variable expansion issues with commands like awk (e.g., `$2`, `$NF` now work correctly)
+- Previous directory tracking now updates properly when changing directories
+
+### Technical
+
+- Server version updated to 1.2.0
+- Comprehensive documentation updates with usage examples
+- Backward compatibility maintained for all existing functionality
+
 ## [1.1.0] - 2025-06-28
 
 ### Added
