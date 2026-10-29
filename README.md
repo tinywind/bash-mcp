@@ -172,3 +172,8 @@ tinywind <tinywind0@gmail.com>
 ## Contributing
 
 Issues and pull requests are welcome at [GitHub](https://github.com/tinywind/bash-mcp).
+### Temporary output security
+
+Overflow output is written to a private directory under `BASH_MCP_TEMP_DIR`, with an operating-system temporary directory fallback. On POSIX systems, directories use mode `0700` and files use mode `0600`. Files are created exclusively, and background process names are not used as path components. Full output files remain available at the paths returned by the tools.
+
+`npm test` exercises the public MCP executable and verifies that pre-created symlinks cannot overwrite existing files for normal output, fallback output, or background stdout/stderr.

@@ -8,7 +8,7 @@ import {
 import { spawn, exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, stat, access, mkdir } from "fs/promises";
-import { constants } from "fs";
+import { constants, mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -73,6 +73,15 @@ const server = new Server(
 // 백그라운드 프로세스 저장소
 const backgroundProcesses = new Map();
 
+function createOutputPath(directory, filename) {
+  try {
+    return join(mkdtempSync(join(directory, 'bash-mcp-')), filename);
+  } catch (error) {
+    if (directory === tmpdir()) throw error;
+    return join(mkdtempSync(join(tmpdir(), 'bash-mcp-')), filename);
+  }
+}
+
 // 출력 크기 제한 함수 (파일 저장 기능 추가)
 async function truncateOutput(output, maxSize = MAX_OUTPUT_SIZE, prefix = 'output') {
   if (output.length <= maxSize) {
@@ -80,12 +89,12 @@ async function truncateOutput(output, maxSize = MAX_OUTPUT_SIZE, prefix = 'outpu
   }
   
   // 임시 파일에 전체 출력 저장
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `bash-mcp-${prefix}-${timestamp}.txt`;
-  const filePath = join(TEMP_DIR, filename);
+  const filename = `${prefix}.txt`;
+  let filePath;
   
   try {
-    await writeFile(filePath, output, 'utf8');
+    filePath = createOutputPath(TEMP_DIR, filename);
+    await writeFile(filePath, output, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     const truncated = output.substring(0, maxSize);
     const message = `\n\n[Output truncated - exceeded ${maxSize} bytes limit]\n[Full output saved to: ${filePath}]`;
     return { 
@@ -101,9 +110,10 @@ async function truncateOutput(output, maxSize = MAX_OUTPUT_SIZE, prefix = 'outpu
     
     if (TEMP_DIR !== tmpdir()) {
       // 커스텀 디렉토리 실패 시 시스템 기본 디렉토리로 재시도
-      const fallbackPath = join(tmpdir(), filename);
+      let fallbackPath;
       try {
-        await writeFile(fallbackPath, output, 'utf8');
+        fallbackPath = createOutputPath(tmpdir(), filename);
+        await writeFile(fallbackPath, output, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
         const truncated = output.substring(0, maxSize);
         const message = `\n\n[Output truncated - exceeded ${maxSize} bytes limit]\n[Full output saved to: ${fallbackPath}]`;
         return { 
@@ -371,9 +381,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (processInfo.totalOutputSize > MAX_OUTPUT_SIZE && !processInfo.outputOverflow) {
             processInfo.outputOverflow = true;
             // 비동기로 파일 저장 예약
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `bash-mcp-background-${processName}-stdout-${timestamp}.txt`;
-            processInfo.outputFilePath = join(tmpdir(), filename);
+            try {
+              processInfo.outputFilePath = createOutputPath(TEMP_DIR, 'stdout.txt');
+            } catch (error) {
+              console.error('Failed to create a private stdout file:', error);
+            }
           }
 
           // 메모리 관리를 위해 100개 청크로 제한
@@ -390,9 +402,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (processInfo.totalErrorSize > MAX_OUTPUT_SIZE && !processInfo.errorOverflow) {
             processInfo.errorOverflow = true;
             // 비동기로 파일 저장 예약
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `bash-mcp-background-${processName}-stderr-${timestamp}.txt`;
-            processInfo.errorFilePath = join(tmpdir(), filename);
+            try {
+              processInfo.errorFilePath = createOutputPath(TEMP_DIR, 'stderr.txt');
+            } catch (error) {
+              console.error('Failed to create a private stderr file:', error);
+            }
           }
 
           // 메모리 관리를 위해 100개 청크로 제한
@@ -409,7 +423,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // 종료 시 overflow된 출력을 파일로 저장
           if (processInfo.outputOverflow && processInfo.outputFilePath) {
             try {
-              await writeFile(processInfo.outputFilePath, processInfo.output.join(''), 'utf8');
+              await writeFile(processInfo.outputFilePath, processInfo.output.join(''), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
             } catch (e) {
               // 파일 저장 실패 무시
             }
@@ -417,7 +431,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           
           if (processInfo.errorOverflow && processInfo.errorFilePath) {
             try {
-              await writeFile(processInfo.errorFilePath, processInfo.errors.join(''), 'utf8');
+              await writeFile(processInfo.errorFilePath, processInfo.errors.join(''), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
             } catch (e) {
               // 파일 저장 실패 무시
             }
