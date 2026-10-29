@@ -2,3 +2,4 @@
 /.claude/
 *.log
 test-report.md
+.tmp/
