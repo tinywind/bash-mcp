@@ -1,4 +1,12 @@
-# bash-mcp
+# DEPRECATED_bash-mcp
+
+> **This project is no longer maintained.** Development and support ended on October 29, 2026. No new features, bug fixes, dependency updates, or security patches will be provided. Do not use this project for new integrations.
+
+Use your coding agent's built-in shell tools when available. [Claude Code](https://code.claude.com/docs/en/interactive-mode#background-bash-commands) supports shell commands, background tasks, and output retrieval. For MCP clients that need a separate terminal server, evaluate [Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP). Its configuration and tool names differ from bash-mcp.
+
+## Historical documentation
+
+The documentation below is retained for historical reference.
 
 A simple MCP (Model Context Protocol) server that enables Claude to execute shell commands without permission prompts.
 
@@ -171,7 +179,7 @@ tinywind <tinywind0@gmail.com>
 
 ## Contributing
 
-Issues and pull requests are welcome at [GitHub](https://github.com/tinywind/bash-mcp).
+This project no longer accepts feature requests, bug reports, or pull requests. Fork the repository if you need to maintain a version.
 ### Temporary output security
 
 Overflow output is written to a private directory under `BASH_MCP_TEMP_DIR`, with an operating-system temporary directory fallback. On POSIX systems, directories use mode `0700` and files use mode `0600`. Files are created exclusively, and background process names are not used as path components. Full output files remain available at the paths returned by the tools.
