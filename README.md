@@ -158,7 +158,7 @@ This MCP server executes arbitrary shell commands with the same privileges as th
 
 ## Requirements
 
-- Node.js >= 16.0.0
+- Node.js >= 20.0.0
 - npm or npx
 
 ## License
