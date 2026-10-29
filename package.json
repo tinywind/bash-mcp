@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test/mcp.test.js"
+    "test": "node --test test/mcp.test.js test/temp-output.test.js"
   },
   "keywords": [
     "mcp",
